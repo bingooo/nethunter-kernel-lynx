@@ -1,0 +1,73 @@
+diff --git a/core/rtw_wlan_util.c b/core/rtw_wlan_util.c
+index 8172459..1d48368 100644
+--- a/core/rtw_wlan_util.c
++++ b/core/rtw_wlan_util.c
+@@ -4769,7 +4769,8 @@ int rtw_dev_nlo_info_set(struct pno_nlo_info *nlo_info, pno_ssid_t *ssid,
+ 	}
+ 
+ 	/* cipher array */
+-	fp = filp_open("/data/misc/wifi/wpa_supplicant.conf", O_RDONLY,  0644);
++	return 0;
++	fp = NULL;
+ 	if (IS_ERR(fp)) {
+ 		RTW_INFO("Error, wpa_supplicant.conf doesn't exist.\n");
+ 		RTW_INFO("Error, cipher array using default value.\n");
+diff --git a/os_dep/osdep_service.c b/os_dep/osdep_service.c
+index 02d313d..2e06171 100644
+--- a/os_dep/osdep_service.c
++++ b/os_dep/osdep_service.c
+@@ -1899,16 +1899,8 @@ inline bool ATOMIC_INC_UNLESS(ATOMIC_T *v, int u)
+ */
+ static int openFile(struct file **fpp, const char *path, int flag, int mode)
+ {
+-	struct file *fp;
+-
+-	fp = filp_open(path, flag, mode);
+-	if (IS_ERR(fp)) {
+-		*fpp = NULL;
+-		return PTR_ERR(fp);
+-	} else {
+-		*fpp = fp;
+-		return 0;
+-	}
++	*fpp = NULL;
++	return -EOPNOTSUPP;
+ }
+ 
+ /*
+@@ -1935,7 +1927,7 @@ static int readFile(struct file *fp, char *buf, int len)
+ 
+ 	while (sum < len) {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+-		rlen = kernel_read(fp, buf + sum, len - sum, &fp->f_pos);
++		rlen = -EOPNOTSUPP;
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+ 		rlen = __vfs_read(fp, buf + sum, len - sum, &fp->f_pos);
+ #else
+@@ -1966,7 +1958,7 @@ static int writeFile(struct file *fp, char *buf, int len)
+ 
+ 	while (sum < len) {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+-		wlen = kernel_write(fp, buf + sum, len - sum, &fp->f_pos);
++		wlen = -EOPNOTSUPP;
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+ 		wlen = __vfs_write(fp, buf + sum, len - sum, &fp->f_pos);
+ #else
+@@ -1992,6 +1984,7 @@ static int writeFile(struct file *fp, char *buf, int len)
+ */
+ static int isFileReadable(const char *path, u32 *sz)
+ {
++	return -EOPNOTSUPP;
+ 	struct file *fp;
+ 	int ret = 0;
+ #ifdef set_fs
+@@ -1999,7 +1992,7 @@ static int isFileReadable(const char *path, u32 *sz)
+ #endif
+ 	char buf;
+ 
+-	fp = filp_open(path, O_RDONLY, 0);
++	fp = NULL;
+ 	if (IS_ERR(fp))
+ 		ret = PTR_ERR(fp);
+ 	else {
+

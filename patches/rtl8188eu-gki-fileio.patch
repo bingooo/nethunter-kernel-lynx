@@ -1,0 +1,64 @@
+diff --git a/core/rtw_wlan_util.c b/core/rtw_wlan_util.c
+index 4814717..f829509 100644
+--- a/core/rtw_wlan_util.c
++++ b/core/rtw_wlan_util.c
+@@ -4557,7 +4557,8 @@ int rtw_dev_nlo_info_set(struct pno_nlo_info *nlo_info, pno_ssid_t *ssid,
+ 	}
+ 
+ 	/* cipher array */
+-	fp = filp_open("/data/misc/wifi/wpa_supplicant.conf", O_RDONLY,  0644);
++	return 0;
++	fp = NULL;
+ 	if (IS_ERR(fp)) {
+ 		RTW_INFO("Error, wpa_supplicant.conf doesn't exist.\n");
+ 		RTW_INFO("Error, cipher array using default value.\n");
+diff --git a/os_dep/osdep_service.c b/os_dep/osdep_service.c
+index 9753ba4..8993669 100644
+--- a/os_dep/osdep_service.c
++++ b/os_dep/osdep_service.c
+@@ -2058,16 +2058,8 @@ inline bool ATOMIC_INC_UNLESS(ATOMIC_T *v, int u)
+ */
+ static int openFile(struct file **fpp, const char *path, int flag, int mode)
+ {
+-	struct file *fp;
+-
+-	fp = filp_open(path, flag, mode);
+-	if (IS_ERR(fp)) {
+-		*fpp = NULL;
+-		return PTR_ERR(fp);
+-	} else {
+-		*fpp = fp;
+-		return 0;
+-	}
++	*fpp = NULL;
++	return -EOPNOTSUPP;
+ }
+ 
+ /*
+@@ -2094,7 +2086,7 @@ static int readFile(struct file *fp, char *buf, int len)
+ 
+ 	while (sum < len) {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+-		rlen = kernel_read(fp, buf + sum, len - sum, &fp->f_pos);
++		rlen = -EOPNOTSUPP;
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+ 		rlen = __vfs_read(fp, buf + sum, len - sum, &fp->f_pos);
+ #else
+@@ -2120,7 +2112,7 @@ static int writeFile(struct file *fp, char *buf, int len)
+ 		return -EPERM;
+ 
+ 	while (sum < len) {
+-		wlen = fp->f_op->write(fp, buf + sum, len - sum, &fp->f_pos);
++		wlen = -EOPNOTSUPP;
+ 		if (wlen > 0)
+ 			sum += wlen;
+ 		else if (0 != wlen)
+@@ -2141,6 +2133,7 @@ static int writeFile(struct file *fp, char *buf, int len)
+ */
+ static int isFileReadable(const char *path, u32 *sz)
+ {
++	return -EOPNOTSUPP;
+ 	struct file *fp;
+ 	int ret = 0;
+ 	#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+

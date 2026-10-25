@@ -1,0 +1,6 @@
+--- a/kernel/gen_kheaders.sh
++++ b/kernel/gen_kheaders.sh
+@@ -10,1 +10,1 @@
+-cpio_dir=$outdir/$tarfile.tmp
++cpio_dir=$(mktemp -d /tmp/kheaders_tmp.XXXXXX)
+

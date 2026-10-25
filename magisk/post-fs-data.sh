@@ -22,6 +22,11 @@ LOG="/data/local/tmp/nethunter-modules.log"
 
 load() {
   ko="$KO_DIR/$1"
+  modname="${1%.ko}"
+  if grep -q "^${modname} " /proc/modules; then
+    echo "[DEJA]   $1 (deja charge dans le noyau)" >> "$LOG"
+    return 0
+  fi
   if [ ! -f "$ko" ]; then
     echo "[ABSENT] $1" >> "$LOG"
     return 0

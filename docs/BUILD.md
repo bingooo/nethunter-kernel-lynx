@@ -58,13 +58,14 @@ export LD_LIBRARY_PATH=~/toolchain/libs
 
 `build.sh` fait ce symlink automatiquement dans `.toolchain-libs/`.
 
-## BTF désactivé (fragment)
+## BTF activé (obligatoire pour GKI & module_layout CRC)
 
-`CONFIG_DEBUG_INFO_BTF` est désactivé par le fragment (`configs/nethunter.config`).
-C'est nécessaire car `tools/bpf/resolve_btfids` (libbpf embarquée du 6.1) ne
-compile pas avec clang 16+ sous `-Werror`. BTF n'est requis ni pour le vermagic
-ni pour les CRC modversions des modules WiFi/BT : le désactiver ne change rien
-au chargement des modules.
+Dans `include/linux/module.h`, `struct module` embarque `btf_data` et `btf_data_size`
+conditionnés par `CONFIG_DEBUG_INFO_BTF_MODULES`. Si désactivé, `struct module`
+change de structure en mémoire et le CRC de `module_layout` diverge de celui du
+noyau officiel Google (`0xea759d7f`), provoquant un rejet immédiat (`disagrees about version of symbol module_layout`).
+Pour éviter l'erreur de build historique sous clang 16+ dans `resolve_btfids`,
+`build.sh` passe les flags `HOSTCFLAGS="-Wno-error=discarded-qualifiers -Wno-error=incompatible-pointer-types-discards-qualifiers"`.
 
 ## LTO thin (obligatoire pour GKI)
 
@@ -81,11 +82,19 @@ grep -E 'CONFIG_LTO_CLANG' out/.config
 # => CONFIG_LTO_CLANG=y + CONFIG_LTO_CLANG_THIN=y
 ```
 
-## Build
+## Build (Docker ou Hôte Linux)
+
+### Option A : Via Docker (Recommandé sur macOS / Linux)
 
 ```bash
-CLANG_DIR=$HOME/toolchain/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04 \
-  ./build.sh
+./docker-build.sh
+```
+
+### Option B : Directement sur l'hôte (Linux avec clang 17)
+
+```bash
+./build.sh
+./build-magisk.sh 6.1.145
 ```
 
 Déroulé :

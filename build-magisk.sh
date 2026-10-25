@@ -31,7 +31,7 @@ ZIP_PATH="$OUTPUT_DIR/$ZIP_NAME"
 log() { printf '\033[1;35m[magisk]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[magisk]\033[0m %s\n' "$*"; }
 
-STAGE="$(mktemp -d "$ROOT_DIR/.magisk-stage.XXXXXX")"
+STAGE="$(mktemp -d /tmp/.magisk-stage.XXXXXX)"
 trap 'rm -rf "$STAGE"' EXIT
 
 log "assemblage du module Magisk (noyau ${KERNEL_VER})"
@@ -71,10 +71,11 @@ log "total modules inclus : ${total} (${count_in} in-tree + ${count_oot} out-of-
 
 # 3bis. Strip des .ko (les modules sont buildés avec -g -gdwarf-5 : le debug
 #       info multiplie la taille par ~8 ; on le retire avec llvm-strip).
-if command -v llvm-strip >/dev/null 2>&1; then
-  log "strip des .ko (llvm-strip --strip-debug)"
+STRIP_TOOL="$(command -v llvm-strip || command -v llvm-strip-17 || true)"
+if [ -n "$STRIP_TOOL" ]; then
+  log "strip des .ko ($STRIP_TOOL --strip-debug)"
   before=$(du -sk "$STAGE/system/lib/modules" | cut -f1)
-  find "$STAGE/system/lib/modules" -name '*.ko' -exec llvm-strip --strip-debug {} \;
+  find "$STAGE/system/lib/modules" -name '*.ko' -exec "$STRIP_TOOL" --strip-debug {} \;
   after=$(du -sk "$STAGE/system/lib/modules" | cut -f1)
   log "taille modules : ${before} KiB -> ${after} KiB"
 else

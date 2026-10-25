@@ -48,6 +48,14 @@ avec les mêmes CRC modversions. Voir `docs/VERMAGIC.md`.
 
 ## Build
 
+### Méthode 1 : Docker (Recommandé sur macOS / Linux)
+
+```bash
+./docker-build.sh
+```
+
+### Méthode 2 : Directement sur l'hôte Linux
+
 ```bash
 ./build.sh              # noyau + modules in-tree + pilotes out-of-tree
 ./build-magisk.sh 6.1.145   # module Magisk installable

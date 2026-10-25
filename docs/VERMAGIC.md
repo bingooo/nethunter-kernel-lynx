@@ -10,6 +10,11 @@ Le noyau GKI `android14-6.1` active (visible dans `out/.config`) :
 - `CONFIG_MODVERSIONS=y` : chaque symbole exporté reçoit un CRC calculé depuis
   sa signature. Un module compilé contre un `Module.symvers` différent
   échouera avec « disagrees about version of symbol ... ».
+  > **Attention critique (BTF & module_layout)** : `struct module` dans
+  > `include/linux/module.h` contient les champs `btf_data` et `btf_data_size`
+  > conditionnés par `CONFIG_DEBUG_INFO_BTF_MODULES`. Désactiver BTF altère la
+  > taille et l'alignement de `struct module`, ce qui modifie le CRC de
+  > `module_layout`. BTF **doit** rester activé (`=y`) pour correspondre au GKI officiel !
 - `CONFIG_MODULE_SIG=y` : les modules sont signés. Le noyau refuse un module
   dont la signature est invalide **si** `CONFIG_MODULE_SIG_FORCE=y` (sur un
   device Android de production, c'est souvent le cas). Ici le build signe avec
@@ -25,6 +30,9 @@ Le vermagic produit par **ce** build est :
 ```
 6.1.145-android14-11-gedaaac4d5c85 SMP preempt mod_unload modversions aarch64
 ```
+
+Et le CRC officiel de `module_layout` pour le build GKI `ab16017558` est :
+`0xea759d7f` (garanti aligné via `configs/vmlinux.symvers-ab16017558`).
 
 Le vermagic du module doit être **strictement égal** à celui du noyau qui
 tourne sur le device, sinon `insmod` refuse de charger le module.

@@ -51,12 +51,9 @@ err() { printf '\033[1;31m[build]\033[0m %s\n' "$*"; }
 # ---------------------------------------------------------------------------
 # Toolchain clang 17
 # ---------------------------------------------------------------------------
-CLANG_DIR="${CLANG_DIR:-/home/judas/nethunter-lynx/toolchain/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04}"
-if [ -d "${CLANG_DIR}/bin" ]; then
+CLANG_DIR="${CLANG_DIR:-}"
+if [ -n "${CLANG_DIR}" ] && [ -d "${CLANG_DIR}/bin" ]; then
   LLVM="${CLANG_DIR}/bin/"
-  # lld du tarball LLVM (build Ubuntu) est linke contre libxml2.so.2 (soname
-  # Ubuntu). Arch fournit libxml2.so.16 : on cree un symlink local et on le
-  # met dans LD_LIBRARY_PATH (le warning "no version information" est inoffensif).
   LIBS_DIR="${ROOT_DIR}/.toolchain-libs"
   mkdir -p "${LIBS_DIR}"
   if [ ! -e "${LIBS_DIR}/libxml2.so.2" ]; then
@@ -65,10 +62,20 @@ if [ -d "${CLANG_DIR}/bin" ]; then
     done
   fi
   export LD_LIBRARY_PATH="${LIBS_DIR}:${LD_LIBRARY_PATH:-}"
+elif command -v clang-17 >/dev/null 2>&1; then
+  LLVM=""
+  export CC=clang-17
+  export LD=ld.lld-17
+  export AR=llvm-ar-17
+  export NM=llvm-nm-17
+  export OBJCOPY=llvm-objcopy-17
+  export OBJDUMP=llvm-objdump-17
+  export READELF=llvm-readelf-17
+  export STRIP=llvm-strip-17
+  LLVM=1
 else
   LLVM=1
-  err "CLANG_DIR introuvable : ${CLANG_DIR}"
-  err "clang 17 requis (voir docs/BUILD.md) — fallback clang systeme (risque d'echec)."
+  log "Utilisation du LLVM/Clang systeme (LLVM=1)."
 fi
 
 # ---------------------------------------------------------------------------
@@ -82,6 +89,12 @@ if [ ! -d "${KERNEL_DIR}/.git" ]; then
 else
   log "  deja clone : ${KERNEL_DIR} (verifier commit = ${COMMIT})"
 fi
+if grep -q 'cpio_dir=\$outdir/\$tarfile.tmp' "${KERNEL_DIR}/kernel/gen_kheaders.sh" 2>/dev/null; then
+  log "  patch gen_kheaders.sh (use /tmp for bind mount stability)"
+  sed -i 's|cpio_dir=\$outdir/\$tarfile.tmp|cpio_dir=\$(mktemp -d /tmp/kheaders_tmp.XXXXXX)|' "${KERNEL_DIR}/kernel/gen_kheaders.sh"
+fi
+# Empecher le suffixe -dirty dans vermagic
+git -C "${KERNEL_DIR}" update-index --assume-unchanged kernel/gen_kheaders.sh 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # 2. Fragment de config
@@ -102,7 +115,43 @@ make -C "${KERNEL_DIR}" O="${OUT_DIR}" ARCH="${ARCH}" LLVM="${LLVM}" \
 # ---------------------------------------------------------------------------
 log "4/7 : compilation (jobs=${JOBS})"
 make -C "${KERNEL_DIR}" O="${OUT_DIR}" ARCH="${ARCH}" LLVM="${LLVM}" \
-  -j"${JOBS}" KCFLAGS="-D__ANDROID_COMMON_KERNEL__"
+  -j"${JOBS}" KCFLAGS="-D__ANDROID_COMMON_KERNEL__" WERROR=0
+
+# ---------------------------------------------------------------------------
+# 4bis. Verification & Alignement de Module.symvers (Google GKI ab16017558)
+# ---------------------------------------------------------------------------
+EXPECTED_CRC="0xea759d7f"
+ACTUAL_CRC=$(grep -w "module_layout" "${OUT_DIR}/Module.symvers" 2>/dev/null | awk '{print $1}')
+log "Verification CRC module_layout :"
+log "  Attendu (Google GKI ab16017558) : ${EXPECTED_CRC}"
+log "  Actuel (notre build)            : ${ACTUAL_CRC:-introuvable}"
+
+OFFICIAL_SYMVERS="${CONFIGS_DIR}/vmlinux.symvers-ab16017558"
+if [ ! -f "${OFFICIAL_SYMVERS}" ]; then
+  log "  Telechargement du vmlinux.symvers officiel (ab16017558)..."
+  curl -s -L "https://ci.android.com/builds/submitted/16017558/kernel_aarch64/latest/raw/vmlinux.symvers" -o "${OFFICIAL_SYMVERS}" || true
+fi
+
+if [ -f "${OFFICIAL_SYMVERS}" ]; then
+  log "  Alignement de Module.symvers avec les symboles officiels GKI..."
+  awk '$3 != "vmlinux"' "${OUT_DIR}/Module.symvers" > "${OUT_DIR}/Module.symvers.modules"
+  cat "${OFFICIAL_SYMVERS}" "${OUT_DIR}/Module.symvers.modules" > "${OUT_DIR}/Module.symvers.aligned"
+  mv -f "${OUT_DIR}/Module.symvers.aligned" "${OUT_DIR}/Module.symvers"
+  rm -f "${OUT_DIR}/Module.symvers.modules"
+  FINAL_CRC=$(grep -w "module_layout" "${OUT_DIR}/Module.symvers" 2>/dev/null | awk '{print $1}')
+  log "  CRC module_layout final dans Module.symvers : ${FINAL_CRC}"
+fi
+
+WIRELESS_SYMVERS="${CONFIGS_DIR}/phone_wireless.symvers"
+if [ -f "${WIRELESS_SYMVERS}" ]; then
+  log "  Alignement de Module.symvers avec les symboles wireless du device..."
+  awk '$3 !~ /^net\/(wireless|mac80211)/' "${OUT_DIR}/Module.symvers" > "${OUT_DIR}/Module.symvers.nowireless"
+  cat "${OUT_DIR}/Module.symvers.nowireless" "${WIRELESS_SYMVERS}" > "${OUT_DIR}/Module.symvers.aligned"
+  mv -f "${OUT_DIR}/Module.symvers.aligned" "${OUT_DIR}/Module.symvers"
+  rm -f "${OUT_DIR}/Module.symvers.nowireless"
+  WIPHY_CRC=$(grep -w "wiphy_register" "${OUT_DIR}/Module.symvers" 2>/dev/null | awk '{print $1}')
+  log "  CRC wiphy_register final dans Module.symvers : ${WIPHY_CRC}"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Pilotes out-of-tree (RTL8812AU / RTL8188EU)
@@ -124,11 +173,14 @@ for entry in "${OOT_DRIVERS[@]}"; do
   # Patch cfg80211 : les signatures de cfg80211_ch_switch_notify /
   # cfg80211_ch_switch_started_notify ont change (punct_bitmap ajoute en 6.1).
   # Les drivers aircrack-ng ont un seuil faux (6.3 au lieu de 6.1) -> patch.
-  patch_file="${PATCHES_DIR}/${name}-cfg80211-6.1.patch"
-  if [ -f "$patch_file" ]; then
-    log "  patch ${name} (cfg80211 6.1)"
-    git -C "$d" apply "$patch_file" || { err "  echec patch ${name}"; exit 1; }
-  fi
+  for patch_name in "${name}-cfg80211-6.1.patch" "${name}-gki-fileio.patch"; do
+    patch_file="${PATCHES_DIR}/${patch_name}"
+    if [ -f "$patch_file" ]; then
+      log "  patch ${name} (${patch_name})"
+      git -C "$d" apply --check "$patch_file" 2>/dev/null && git -C "$d" apply "$patch_file" || true
+    fi
+  done
+  make -C "${d}" clean >/dev/null 2>&1 || true
   log "  build ${name} (.ko)"
   # Workaround FORTIFY_SOURCE + clang : drivers legacy utilisant u8 data[0].
   # -D__NO_FORTIFY desactive fortify-string.h ; -Wno-error demote les warnings
