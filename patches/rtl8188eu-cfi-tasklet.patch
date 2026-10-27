@@ -1,0 +1,39 @@
+diff --git a/hal/rtl8188e/usb/rtl8188eu_xmit.c b/hal/rtl8188e/usb/rtl8188eu_xmit.c
+index 858334d..05ce2ac 100644
+--- a/hal/rtl8188e/usb/rtl8188eu_xmit.c
++++ b/hal/rtl8188e/usb/rtl8188eu_xmit.c
+@@ -25,7 +25,7 @@ s32	rtl8188eu_init_xmit_priv(_adapter *padapter)
+ 
+ #ifdef PLATFORM_LINUX
+ 	tasklet_init(&pxmitpriv->xmit_tasklet,
+-		     (void(*)(unsigned long))rtl8188eu_xmit_tasklet,
++		     rtl8188eu_xmit_tasklet,
+ 		     (unsigned long)padapter);
+ #endif
+ #ifdef CONFIG_TX_EARLY_MODE
+diff --git a/hal/rtl8188e/usb/usb_ops_linux.c b/hal/rtl8188e/usb/usb_ops_linux.c
+index 26df100..f79e3ee 100644
+--- a/hal/rtl8188e/usb/usb_ops_linux.c
++++ b/hal/rtl8188e/usb/usb_ops_linux.c
+@@ -245,7 +245,7 @@ _exit_recvbuf2recvframe:
+ 
+ 
+ 
+-void rtl8188eu_xmit_tasklet(void *priv)
++void rtl8188eu_xmit_tasklet(unsigned long priv)
+ {
+ 	int ret = _FALSE;
+ 	_adapter *padapter = (_adapter *)priv;
+diff --git a/include/rtl8188e_xmit.h b/include/rtl8188e_xmit.h
+index f625576..2dc3f6d 100644
+--- a/include/rtl8188e_xmit.h
++++ b/include/rtl8188e_xmit.h
+@@ -263,7 +263,7 @@ void rtl8188e_cal_txdesc_chksum(struct tx_desc	*ptxdesc);
+ 	s32 rtl8188eu_mgnt_xmit(PADAPTER padapter, struct xmit_frame *pmgntframe);
+ 	s32	rtl8188eu_hal_xmitframe_enqueue(_adapter *padapter, struct xmit_frame *pxmitframe);
+ 	s32 rtl8188eu_xmit_buf_handler(PADAPTER padapter);
+-	void rtl8188eu_xmit_tasklet(void *priv);
++	void rtl8188eu_xmit_tasklet(unsigned long priv);
+ 	s32 rtl8188eu_xmitframe_complete(_adapter *padapter, struct xmit_priv *pxmitpriv, struct xmit_buf *pxmitbuf);
+ #endif
+ 

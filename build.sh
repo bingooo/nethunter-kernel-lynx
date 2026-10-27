@@ -173,7 +173,7 @@ for entry in "${OOT_DRIVERS[@]}"; do
   # Patch cfg80211 : les signatures de cfg80211_ch_switch_notify /
   # cfg80211_ch_switch_started_notify ont change (punct_bitmap ajoute en 6.1).
   # Les drivers aircrack-ng ont un seuil faux (6.3 au lieu de 6.1) -> patch.
-  for patch_name in "${name}-cfg80211-6.1.patch" "${name}-gki-fileio.patch"; do
+  for patch_name in "${name}-cfg80211-6.1.patch" "${name}-gki-fileio.patch" "${name}-cfi-tasklet.patch"; do
     patch_file="${PATCHES_DIR}/${patch_name}"
     if [ -f "$patch_file" ]; then
       log "  patch ${name} (${patch_name})"
