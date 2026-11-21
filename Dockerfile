@@ -40,4 +40,4 @@ RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100 && 
 
 WORKDIR /workspace
 
-CMD ["/bin/bash", "-c", "./build.sh && ./build-magisk.sh 6.1.145"]
+CMD ["/bin/bash", "-c", "./build.sh && ./build-magisk.sh 6.1.157"]

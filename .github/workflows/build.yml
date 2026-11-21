@@ -1,0 +1,84 @@
+name: build-nethunter-lynx
+
+# Compile les modules noyau NetHunter pour le Pixel 7a (lynx) ciblant le
+# noyau exact du device : 6.1.157-android14-11-gb3d4cdadf339 (build GKI ab16160610).
+# Les runners GitHub ont acces a android.googlesource.com et ci.android.com
+# (contrairement au conteneur de dev), donc le build tourne ici de bout en bout.
+#
+# Declenchement : manuel (workflow_dispatch) ou push sur main.
+# Resultat : artefacts telechargeables (output/) = les .ko + le zip Magisk.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Liberer de l'espace disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
+      - name: Ajouter du swap (filet RAM, best-effort)
+        continue-on-error: true
+        run: |
+          # Le runner a deja un /swapfile actif -> on en ajoute un autre sur /mnt.
+          sudo fallocate -l 12G /mnt/ci-swap || sudo dd if=/dev/zero of=/mnt/ci-swap bs=1M count=12288
+          sudo chmod 600 /mnt/ci-swap
+          sudo mkswap /mnt/ci-swap
+          sudo swapon /mnt/ci-swap || true
+          free -h
+
+      - name: Installer la toolchain (clang-17 + outils noyau)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libssl-dev libelf-dev \
+            pahole dwarves git python3 zip unzip curl ca-certificates \
+            rsync kmod cpio wget libxml2 clang-17 lld-17 llvm-17
+          for t in clang clang++ lld ld.lld llvm-strip llvm-ar llvm-nm llvm-objcopy llvm-readelf; do
+            sudo update-alternatives --install /usr/bin/$t $t /usr/bin/$t-17 100 || true
+          done
+          clang --version
+          # pyelftools pour le realignement CRC post-build (patch_crcs.py)
+          pip3 install --quiet --break-system-packages pyelftools || pip3 install --quiet pyelftools
+
+      - name: Build noyau + modules (.ko)
+        run: |
+          chmod +x build.sh build-magisk.sh
+          ./build.sh
+
+      - name: Assembler le module Magisk
+        # Seulement si build.sh (porte de verif ABI incluse) a reussi.
+        run: ./build-magisk.sh 6.1.157
+
+      - name: Verifier vermagic des .ko produits
+        if: ${{ always() }}
+        run: |
+          echo "=== vermagic rt2800usb.ko ==="
+          modinfo output/modules/rt2800usb.ko | grep -E 'vermagic|name' || true
+          echo "=== modules produits ==="
+          ls -la output/modules/*.ko
+
+      - name: Upload artefacts (.ko + zip Magisk)
+        # always() : on remonte les .ko MEME si la porte de verif ABI a echoue,
+        # pour pouvoir les inspecter / relancer verify_wireless_abi.py en local.
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethunter-lynx-6.1.157-ab16160610
+          path: |
+            output/modules/*.ko
+            output/*.zip
+            output/Module.symvers
+            output/.config
+          if-no-files-found: warn
+          retention-days: 30
